@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String?   @unique
+  name          String?
+  image         String?
+  walletAddress String?   @unique
+  plan          Plan      @default(FREE)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  queries       QueryLog[]
+  proofs        Proof[]
+  usage         UsageDaily[]
+}
+
+enum Plan {
+  FREE
+  PREMIUM
+  ENTERPRISE
+}
+
+model QueryLog {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  query           String
+  source          String   // cache | llm
+  model           String?
+  tokensUsed      Int      @default(0)
+  tokensSaved     Int      @default(0)
+  costSavedUsd    Float    @default(0)
+  similarityScore Float?
+  createdAt       DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model Proof {
+  id                   String   @id @default(cuid())
+  userId               String?
+  user                 User?    @relation(fields: [userId], references: [id])
+  hash                 String   @unique
+  queryHash            String
+  hederaTxId           String
+  consensusTimestamp   String?
+  model                String
+  tokensUsed           Int
+  responsePreview      String   // first 200 chars
+  createdAt            DateTime @default(now())
+
+  @@index([hash])
+  @@index([hederaTxId])
+}
+
+model UsageDaily {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  date          DateTime @db.Date
+  queries       Int      @default(0)
+  cacheHits     Int      @default(0)
+  tokensUsed    Int      @default(0)
+  tokensSaved   Int      @default(0)
+  costSavedUsd  Float    @default(0)
+
+  @@unique([userId, date])
+}
