@@ -27,7 +27,7 @@ While traditional RAG **searches** for information, **Proof of Intelligence** de
 ## ✨ Core Flow
 
 1. User submits a query.
-2. System embeds the query and searches **Qdrant** for semantic similarity (> 95%).
+2. System embeds the query and searches **Qdrant** for semantic similarity (≥ 95%).
 3. **Cache Hit** → Return stored response + Hedera transaction ID as proof. **Zero LLM cost**.
 4. **Cache Miss** → Call OpenAI / Grok → Generate response → Compute SHA-256 → Submit to **Hedera Consensus Service** → Store in Qdrant + PostgreSQL → Return response + proof.
 
@@ -37,36 +37,44 @@ While traditional RAG **searches** for information, **Proof of Intelligence** de
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | Next.js 15 (App Router) + TypeScript + Tailwind + shadcn/ui |
-| Backend | Node.js + TypeScript (API Routes / Server Actions) |
-| Relational DB | PostgreSQL (Neon / Supabase / Railway) |
+| Frontend | Next.js 15 (App Router) + TypeScript + Tailwind |
+| Backend | Node.js + TypeScript (API Routes) |
+| Relational DB | PostgreSQL (Prisma) |
 | Vector DB | Qdrant Cloud |
 | Blockchain | Hedera Hashgraph (Consensus Service) |
-| Storage | IPFS (optional for large payloads) |
-| Auth | NextAuth.js (Google) + WalletConnect / RainbowKit |
-| Payments | USDC on Hedera or Stripe + crypto |
+| Auth | NextAuth.js (Google) + Wallet (planned) |
+| Payments | USDC / Stripe (planned) |
 | Deploy | Vercel |
-| Monitoring | Vercel Analytics + custom token-savings dashboard |
 
 ---
 
-## 📁 Project Structure
+## 📁 Project Structure (actual)
 
 ```
 proof-of-intelligence/
-├── apps/
-│   └── web/                    # Next.js 15 frontend + API routes
-├── packages/
-│   ├── core/                   # Shared business logic
-│   ├── hedera/                 # HCS client + hashing
-│   ├── vector/                 # Qdrant client + embeddings
-│   └── db/                     # Prisma / Drizzle schema
+├── src/
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── health/route.ts      # Health check
+│   │   │   └── query/route.ts       # Main query endpoint
+│   │   ├── globals.css
+│   │   ├── layout.tsx
+│   │   └── page.tsx                 # Professional landing
+│   └── lib/
+│       ├── hedera.ts                # HCS + SHA-256 proofs (lazy)
+│       ├── vector.ts                # Qdrant semantic cache (lazy)
+│       └── query-engine.ts          # Orchestrator
+├── prisma/
+│   └── schema.prisma                # Users, Proofs, Usage
 ├── docs/
 │   ├── architecture.md
-│   ├── hedera-design.md
 │   └── api.md
 ├── .env.example
+├── next.config.ts
+├── tailwind.config.ts
+├── tsconfig.json
 ├── package.json
+├── LICENSE
 └── README.md
 ```
 
@@ -84,13 +92,21 @@ npm install
 
 ### 2. Environment Variables
 
-Copy `.env.example` → `.env.local` and fill the values.
+```bash
+cp .env.example .env.local
+```
 
-### 3. Database & Vector Store
+Fill at minimum:
+- `OPENAI_API_KEY`
+- `QDRANT_URL` (+ optional `QDRANT_API_KEY`)
+- `HEDERA_ACCOUNT_ID`, `HEDERA_PRIVATE_KEY`, `HEDERA_TOPIC_ID`
+- `DATABASE_URL` (when using Prisma)
+
+### 3. Database (optional for first run)
 
 ```bash
-npx prisma migrate dev
-# or drizzle-kit push
+npx prisma generate
+npx prisma db push
 ```
 
 ### 4. Run locally
@@ -101,25 +117,37 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000)
 
+### 5. Test the API
+
+```bash
+# Health
+curl http://localhost:3000/api/health
+
+# Query (requires env vars configured)
+curl -X POST http://localhost:3000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is Hedera Hashgraph?"}'
+```
+
 ---
 
-## 🔐 Authentication & Plans
+## 🔐 Authentication & Plans (roadmap)
 
 - **Google OAuth** (NextAuth)
-- **Wallet Login** (Hedera / EVM via WalletConnect)
-- **Free Plan**: 50 queries/day, limited cache hits shown
+- **Wallet Login** (Hedera / EVM)
+- **Free Plan**: 50 queries/day
 - **Premium Plan**: Unlimited + full proof history + API access
 - Payments: USDC on Hedera or Stripe
 
 ---
 
-## 📊 Dashboard Metrics
+## 📊 Dashboard Metrics (planned)
 
 - Total tokens saved
 - Cache hit rate (%)
 - Cost saved (USD)
 - Hedera transactions registered
-- Real-time proof verification
+- Real-time proof verification on HashScan
 
 ---
 
@@ -128,7 +156,7 @@ Open [http://localhost:3000](http://localhost:3000)
 Every cached response carries:
 - SHA-256 of the canonical response
 - Hedera Consensus Service transaction ID + consensus timestamp
-- Publicly verifiable on HashScan
+- Publicly verifiable on [HashScan](https://hashscan.io)
 
 This creates an auditable **Proof of Intelligence** trail.
 
@@ -137,24 +165,22 @@ This creates an auditable **Proof of Intelligence** trail.
 ## 📈 Roadmap
 
 ### MVP (Current)
-- Semantic cache >95%
-- Hedera HCS registration
-- Basic dashboard
-- Google + Wallet auth
-- Free / Premium tiers
+- ✅ Semantic cache ≥ 95%
+- ✅ Hedera HCS registration (lazy, production-safe)
+- ✅ Professional landing page
+- ✅ `/api/query` + `/api/health`
+- ✅ Prisma schema (users, proofs, usage)
 
-### Startup Phase
-- Multi-tenant organizations
-- API keys for developers
-- Advanced RAG hybrid
-- Fine-tuned embedding models
-- USDC payments on Hedera
+### Next
+- Google + Wallet auth
+- Dashboard de ahorro de tokens
+- Free / Premium tiers
+- USDC payments
 
 ### Enterprise
-- Private HCS topics / Mirror nodes
+- Multi-tenant + private HCS topics
 - SSO / SAML
-- On-premise / VPC deployment
-- Custom SLA & audit reports
+- On-premise / VPC
 - White-label
 
 ---
@@ -173,7 +199,6 @@ This creates an auditable **Proof of Intelligence** trail.
 
 ## 📝 Intellectual Property
 
-We recommend:
 1. File provisional patent (method for semantic cache + distributed ledger proof of AI response reuse).
 2. Copyright the codebase and documentation.
 3. Trademark "Proof of Intelligence".
@@ -184,18 +209,16 @@ Consult a qualified IP attorney in your jurisdiction.
 
 ## 🚀 Deployment on Vercel
 
-1. Push to `main`.
-2. Import the repo in Vercel.
-3. Add all environment variables.
+1. Install the [Vercel GitHub App](https://github.com/apps/vercel) and authorize this repository.
+2. Import the project in Vercel.
+3. Add all environment variables from `.env.example`.
 4. Deploy. Vercel auto-detects Next.js.
-
-See `docs/deployment.md` for detailed guide.
 
 ---
 
 ## 👤 Author
 
-Built with 💖 by [elcryptoboy](https://github.com/srbisnes) — Web3 & Omnichain Architect.
+Built by [elcryptoboy](https://github.com/srbisnes) — Web3 & Omnichain Architect.
 
 ---
 
