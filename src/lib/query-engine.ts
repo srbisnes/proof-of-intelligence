@@ -1,14 +1,12 @@
 /**
- * Core Query Engine - Proof of Intelligence
- * Orchestrates semantic cache + LLM + Hedera proof registration
+ * Core Query Engine – Proof of Intelligence
+ * Orchestrates: semantic cache → LLM → SHA-256 → Hedera HCS → store
  */
 
 import { v4 as uuidv4 } from "uuid";
 import OpenAI from "openai";
-import { vectorCache } from "../../packages/vector/src/qdrant";
-import { hederaProof } from "../../packages/hedera/src/hcs";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import { getVectorCache } from "./vector";
+import { getHederaProof } from "./hedera";
 
 export interface QueryResult {
   source: "cache" | "llm";
@@ -23,20 +21,28 @@ export interface QueryResult {
   model: string;
 }
 
-// Rough pricing (update with real values)
-const PRICE_PER_1K_TOKENS = 0.15 / 1000; // example for gpt-4o-mini input+output avg
+// Approximate average price (update with current pricing)
+const PRICE_PER_TOKEN = 0.00015 / 1000; // example
+
+function resolveModel(preferred?: string): string {
+  if (preferred) return preferred;
+  if (process.env.DEFAULT_LLM === "grok") return "grok-beta";
+  return "gpt-4o-mini";
+}
 
 export async function processQuery(
   query: string,
   options: { model?: string; userId?: string } = {}
 ): Promise<QueryResult> {
-  const model = options.model || process.env.DEFAULT_LLM === "grok" ? "grok-beta" : "gpt-4o-mini";
+  const model = resolveModel(options.model);
+  const vectorCache = getVectorCache();
+  const hedera = getHederaProof();
 
   // 1. Semantic search
   const cached = await vectorCache.findSimilar(query);
 
-  if (cached && cached.score && cached.score >= 0.95) {
-    const tokensSaved = cached.tokensUsed || 400; // estimate
+  if (cached && cached.score !== undefined && cached.score >= 0.95) {
+    const tokensSaved = cached.tokensUsed || 400;
     return {
       source: "cache",
       response: cached.response,
@@ -45,32 +51,46 @@ export async function processQuery(
       consensusTimestamp: cached.consensusTimestamp,
       score: cached.score,
       tokensSaved,
-      costSavedUsd: tokensSaved * PRICE_PER_1K_TOKENS,
+      costSavedUsd: Number((tokensSaved * PRICE_PER_TOKEN).toFixed(6)),
       model: cached.model,
     };
   }
 
-  // 2. Call LLM
+  // 2. Call LLM (OpenAI compatible)
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY is required for LLM calls");
+  }
+
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
   const completion = await openai.chat.completions.create({
     model,
     messages: [
-      { role: "system", content: "You are a helpful, accurate assistant." },
+      {
+        role: "system",
+        content:
+          "You are a helpful, accurate and concise assistant. Answer clearly.",
+      },
       { role: "user", content: query },
     ],
   });
 
-  const response = completion.choices[0]?.message?.content || "";
+  const response = completion.choices[0]?.message?.content?.trim() || "";
   const tokensUsed = completion.usage?.total_tokens || 0;
 
-  // 3. Create cryptographic proof on Hedera
-  const proof = await hederaProof.createAndRegister({
+  if (!response) {
+    throw new Error("LLM returned an empty response");
+  }
+
+  // 3. Cryptographic proof on Hedera
+  const proof = await hedera.createAndRegister({
     response,
     query,
     model,
     tokens: tokensUsed,
   });
 
-  // 4. Store in vector DB
+  // 4. Persist in vector store
   const id = uuidv4();
   await vectorCache.store({
     id,
